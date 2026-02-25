@@ -177,8 +177,11 @@ void help() {
         "        input file in FASTA/FASTQ format (can be compressed with gzip)\n"
         "        containing sequences used for correction\n"
         "    <overlaps>\n"
-        "        input file in MHAP/PAF/SAM format (can be compressed with gzip)\n"
-        "        containing overlaps between sequences and target sequences\n"
+        "        input file in MHAP/PAF/SAM format (can be compressed with gzip)"
+#ifdef BAM_ENABLED
+        "\n        or BAM format"
+#endif
+        "\n        containing overlaps between sequences and target sequences\n"
         "    <target sequences>\n"
         "        input file in FASTA/FASTQ format (can be compressed with gzip)\n"
         "        containing sequences which will be corrected\n"

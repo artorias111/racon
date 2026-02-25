@@ -1,1 +1,2 @@
 option('tests', type : 'boolean', value : true, description : 'Enable dependencies required for testing')
+option('bam', type : 'boolean', value : true, description : 'Enable BAM support via htslib')

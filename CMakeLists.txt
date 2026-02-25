@@ -14,6 +14,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(racon_build_tests "Build racon unit tests" OFF)
 option(racon_build_wrapper "Build racon wrapper" OFF)
 option(racon_enable_cuda "Build racon with NVIDIA CUDA support" OFF)
+option(racon_enable_bam "Build racon with BAM support via htslib" ON)
 
 # Check CUDA compatibility.
 if(racon_enable_cuda)
@@ -23,6 +24,19 @@ if(racon_enable_cuda)
     else()
         message(STATUS "Using CUDA ${CUDA_VERSION} from ${CUDA_TOOLKIT_ROOT_DIR}")
         set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -lineinfo")
+    endif()
+endif()
+
+# Check htslib for BAM support.
+if(racon_enable_bam)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(HTSLIB REQUIRED htslib)
+    if(HTSLIB_FOUND)
+        message(STATUS "Found htslib: ${HTSLIB_LIBRARIES}")
+        include_directories(${HTSLIB_INCLUDE_DIRS})
+        link_directories(${HTSLIB_LIBRARY_DIRS})
+    else()
+        message(FATAL_ERROR "htslib not found. Please install htslib or disable BAM support with -Dracon_enable_bam=OFF")
     endif()
 endif()
 
@@ -36,12 +50,20 @@ set(racon_sources
     src/sequence.cpp
     src/window.cpp)
 
+if(racon_enable_bam)
+    list(APPEND racon_sources src/bam_parser.cpp)
+endif()
+
 if(racon_enable_cuda)
     list(APPEND racon_sources src/cuda/cudapolisher.cpp src/cuda/cudabatch.cpp src/cuda/cudaaligner.cpp)
     cuda_add_executable(racon ${racon_sources})
     target_compile_definitions(racon PRIVATE CUDA_ENABLED)
 else()
     add_executable(racon ${racon_sources})
+endif()
+
+if(racon_enable_bam)
+    target_compile_definitions(racon PRIVATE BAM_ENABLED)
 endif()
 
 # Add version information to bibary.
@@ -92,6 +114,9 @@ target_link_libraries(racon bioparser spoa thread_pool edlib_static)
 if (racon_enable_cuda)
     target_link_libraries(racon cudapoa cudaaligner)
 endif()
+if (racon_enable_bam)
+    target_link_libraries(racon ${HTSLIB_LIBRARIES})
+endif()
 
 install(TARGETS racon DESTINATION bin)
 
@@ -110,12 +135,20 @@ if (racon_build_tests)
         src/sequence.cpp
         src/window.cpp)
 
+    if (racon_enable_bam)
+        list(APPEND racon_test_sources src/bam_parser.cpp)
+    endif()
+
     if (racon_enable_cuda)
         list(APPEND racon_test_sources src/cuda/cudapolisher.cpp src/cuda/cudabatch.cpp src/cuda/cudaaligner.cpp)
         cuda_add_executable(racon_test ${racon_test_sources})
         target_compile_definitions(racon_test PRIVATE CUDA_ENABLED)
     else()
         add_executable(racon_test ${racon_test_sources})
+    endif()
+
+    if (racon_enable_bam)
+        target_compile_definitions(racon_test PRIVATE BAM_ENABLED)
     endif()
 
     if (NOT TARGET gtest_main)
@@ -125,6 +158,9 @@ if (racon_build_tests)
     target_link_libraries(racon_test bioparser spoa thread_pool edlib_static gtest_main)
     if (racon_enable_cuda)
         target_link_libraries(racon_test cudapoa cudaaligner)
+    endif()
+    if (racon_enable_bam)
+        target_link_libraries(racon_test ${HTSLIB_LIBRARIES})
     endif()
 endif()
 

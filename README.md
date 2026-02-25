@@ -11,7 +11,7 @@ Racon is intended as a standalone consensus module to correct raw contigs genera
 
 Racon can be used as a polishing tool after the assembly with **either Illumina data or data produced by third generation of sequencing**. The type of data inputed is automatically detected.
 
-Racon takes as input only three files: contigs in FASTA/FASTQ format, reads in FASTA/FASTQ format and overlaps/alignments between the reads and the contigs in MHAP/PAF/SAM format. Output is a set of polished contigs in FASTA format printed to stdout. All input files **can be compressed with gzip** (which will have impact on parsing time).
+Racon takes as input only three files: contigs in FASTA/FASTQ format, reads in FASTA/FASTQ format and overlaps/alignments between the reads and the contigs in MHAP/PAF/SAM format (or BAM format when built with htslib support). Output is a set of polished contigs in FASTA format printed to stdout. All input files **can be compressed with gzip** (which will have impact on parsing time).
 
 Racon can also be used as a read error-correction tool. In this scenario, the MHAP/PAF/SAM file needs to contain pairwise overlaps between reads **including dual overlaps**.
 
@@ -20,6 +20,9 @@ A **wrapper script** is also available to enable easier usage to the end-user fo
 ## Dependencies
 1. gcc 4.8+ or clang 3.4+
 2. cmake 3.2+
+
+### BAM Support (optional)
+1. htslib (for reading BAM files)
 
 ### CUDA Support
 1. gcc 5.0+
@@ -47,6 +50,21 @@ Optionally, you can run `sudo make install` to install racon executable to your 
 To build unit tests add `-Dracon_build_tests=ON` while running `cmake`. After installation, an executable named `racon_test` will be created in `build/bin`.
 
 To build the wrapper script add `-Dracon_build_wrapper=ON` while running `cmake`. After installation, an executable named `racon_wrapper` (python script) will be created in `build/bin`.
+
+### BAM Support
+BAM file support is enabled by default when htslib is available on the system. To build `racon` with BAM support, make sure htslib is installed:
+
+```bash
+# On Ubuntu/Debian
+sudo apt-get install libhts-dev
+
+# On macOS with Homebrew
+brew install htslib
+
+# Or build from source: https://github.com/samtools/htslib
+```
+
+To disable BAM support, add `-Dracon_enable_bam=OFF` while running `cmake`.
 
 ### CUDA Support
 Racon makes use of [NVIDIA's GenomeWorks SDK](https://github.com/clara-parabricks/GenomeWorks) for CUDA accelerated polishing and alignment.
@@ -80,6 +98,7 @@ Usage of `racon` is as following:
             containing sequences used for correction
         <overlaps>
             input file in MHAP/PAF/SAM format (can be compressed with gzip)
+            or BAM format (when built with htslib support)
             containing overlaps between sequences and target sequences
         <target sequences>
             input file in FASTA/FASTQ format (can be compressed with gzip)

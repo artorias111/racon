@@ -17,6 +17,13 @@ namespace bioparser {
     class Parser;
 }
 
+#ifdef BAM_ENABLED
+namespace racon {
+    template<class T>
+    class BamParser;
+}
+#endif
+
 namespace thread_pool {
     class ThreadPool;
 }
@@ -70,6 +77,14 @@ protected:
         PolisherType type, uint32_t window_length, double quality_threshold,
         double error_threshold, bool trim, int8_t match, int8_t mismatch, int8_t gap,
         uint32_t num_threads);
+#ifdef BAM_ENABLED
+    Polisher(std::unique_ptr<bioparser::Parser<Sequence>> sparser,
+        std::unique_ptr<BamParser<Overlap>> bam_oparser,
+        std::unique_ptr<bioparser::Parser<Sequence>> tparser,
+        PolisherType type, uint32_t window_length, double quality_threshold,
+        double error_threshold, bool trim, int8_t match, int8_t mismatch, int8_t gap,
+        uint32_t num_threads);
+#endif
     Polisher(const Polisher&) = delete;
     const Polisher& operator=(const Polisher&) = delete;
     virtual void find_overlap_breaking_points(std::vector<std::unique_ptr<Overlap>>& overlaps);
@@ -77,6 +92,10 @@ protected:
     std::unique_ptr<bioparser::Parser<Sequence>> sparser_;
     std::unique_ptr<bioparser::Parser<Overlap>> oparser_;
     std::unique_ptr<bioparser::Parser<Sequence>> tparser_;
+#ifdef BAM_ENABLED
+    std::unique_ptr<BamParser<Overlap>> bam_oparser_;
+    bool use_bam_parser_;
+#endif
 
     PolisherType type_;
     double quality_threshold_;

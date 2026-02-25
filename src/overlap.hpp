@@ -26,6 +26,11 @@ namespace bioparser {
 }
 
 namespace racon {
+    template<class T>
+    class BamParser;
+}
+
+namespace racon {
 
 class Sequence;
 
@@ -75,6 +80,7 @@ public:
     friend bioparser::MhapParser<Overlap>;
     friend bioparser::PafParser<Overlap>;
     friend bioparser::SamParser<Overlap>;
+    friend BamParser<Overlap>;
 
 #ifdef CUDA_ENABLED
     friend class CUDABatchAligner;

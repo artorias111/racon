@@ -20,6 +20,9 @@
 #include "bioparser/bioparser.hpp"
 #include "thread_pool/thread_pool.hpp"
 #include "spoa/spoa.hpp"
+#ifdef BAM_ENABLED
+#include "bam_parser.hpp"
+#endif
 
 namespace racon {
 
@@ -107,10 +110,20 @@ std::unique_ptr<Polisher> createPolisher(const std::string& sequences_path,
     } else if (is_suffix(overlaps_path, ".sam") || is_suffix(overlaps_path, ".sam.gz")) {
         oparser = bioparser::createParser<bioparser::SamParser, Overlap>(
             overlaps_path);
-    } else {
+    }
+#ifdef BAM_ENABLED
+    else if (is_suffix(overlaps_path, ".bam")) {
+        // BAM files will be handled separately
+    }
+#endif
+    else {
         fprintf(stderr, "[racon::createPolisher] error: "
             "file %s has unsupported format extension (valid extensions: "
-            ".mhap, .mhap.gz, .paf, .paf.gz, .sam, .sam.gz)!\n", overlaps_path.c_str());
+            ".mhap, .mhap.gz, .paf, .paf.gz, .sam, .sam.gz"
+#ifdef BAM_ENABLED
+            ", .bam"
+#endif
+            ")!\n", overlaps_path.c_str());
         exit(1);
     }
 
@@ -132,9 +145,24 @@ std::unique_ptr<Polisher> createPolisher(const std::string& sequences_path,
         exit(1);
     }
 
+#ifdef BAM_ENABLED
+    bool use_bam = is_suffix(overlaps_path, ".bam");
+    std::unique_ptr<BamParser<Overlap>> bam_oparser = nullptr;
+    if (use_bam) {
+        bam_oparser = createBamParser(overlaps_path);
+    }
+#endif
+
     if (cudapoa_batches > 0 || cudaaligner_batches > 0)
     {
 #ifdef CUDA_ENABLED
+#ifdef BAM_ENABLED
+        if (use_bam) {
+            fprintf(stderr, "[racon::createPolisher] error: "
+                    "BAM input is not yet supported with CUDA acceleration.\n");
+            exit(1);
+        }
+#endif
         // If CUDA is enabled, return an instance of the CUDAPolisher object.
         return std::unique_ptr<Polisher>(new CUDAPolisher(std::move(sparser),
                     std::move(oparser), std::move(tparser), type, window_length,
@@ -152,6 +180,14 @@ std::unique_ptr<Polisher> createPolisher(const std::string& sequences_path,
     else
     {
         (void) cuda_banded_alignment;
+#ifdef BAM_ENABLED
+        if (use_bam) {
+            return std::unique_ptr<Polisher>(new Polisher(std::move(sparser),
+                        std::move(bam_oparser), std::move(tparser), type, window_length,
+                        quality_threshold, error_threshold, trim, match, mismatch, gap,
+                        num_threads));
+        }
+#endif
         return std::unique_ptr<Polisher>(new Polisher(std::move(sparser),
                     std::move(oparser), std::move(tparser), type, window_length,
                     quality_threshold, error_threshold, trim, match, mismatch, gap,
@@ -166,7 +202,11 @@ Polisher::Polisher(std::unique_ptr<bioparser::Parser<Sequence>> sparser,
     double error_threshold, bool trim, int8_t match, int8_t mismatch, int8_t gap,
     uint32_t num_threads)
         : sparser_(std::move(sparser)), oparser_(std::move(oparser)),
-        tparser_(std::move(tparser)), type_(type), quality_threshold_(
+        tparser_(std::move(tparser)),
+#ifdef BAM_ENABLED
+        bam_oparser_(nullptr), use_bam_parser_(false),
+#endif
+        type_(type), quality_threshold_(
         quality_threshold), error_threshold_(error_threshold), trim_(trim),
         alignment_engines_(), sequences_(), dummy_quality_(window_length, '!'),
         window_length_(window_length), windows_(),
@@ -184,6 +224,36 @@ Polisher::Polisher(std::unique_ptr<bioparser::Parser<Sequence>> sparser,
         alignment_engines_.back()->prealloc(window_length_, 5);
     }
 }
+
+#ifdef BAM_ENABLED
+Polisher::Polisher(std::unique_ptr<bioparser::Parser<Sequence>> sparser,
+    std::unique_ptr<BamParser<Overlap>> bam_oparser,
+    std::unique_ptr<bioparser::Parser<Sequence>> tparser,
+    PolisherType type, uint32_t window_length, double quality_threshold,
+    double error_threshold, bool trim, int8_t match, int8_t mismatch, int8_t gap,
+    uint32_t num_threads)
+        : sparser_(std::move(sparser)), oparser_(nullptr),
+        tparser_(std::move(tparser)),
+        bam_oparser_(std::move(bam_oparser)), use_bam_parser_(true),
+        type_(type), quality_threshold_(
+        quality_threshold), error_threshold_(error_threshold), trim_(trim),
+        alignment_engines_(), sequences_(), dummy_quality_(window_length, '!'),
+        window_length_(window_length), windows_(),
+        thread_pool_(thread_pool::createThreadPool(num_threads)),
+        thread_to_id_(), logger_(new Logger()) {
+
+    uint32_t id = 0;
+    for (const auto& it: thread_pool_->thread_identifiers()) {
+        thread_to_id_[it] = id++;
+    }
+
+    for (uint32_t i = 0; i < num_threads; ++i) {
+        alignment_engines_.emplace_back(spoa::createAlignmentEngine(
+            spoa::AlignmentType::kNW, match, mismatch, gap));
+        alignment_engines_.back()->prealloc(window_length_, 5);
+    }
+}
+#endif
 
 Polisher::~Polisher() {
     logger_->total("[racon::Polisher::] total =");
@@ -307,10 +377,27 @@ void Polisher::initialize() {
         }
     };
 
+#ifdef BAM_ENABLED
+    if (use_bam_parser_) {
+        bam_oparser_->reset();
+    } else {
+        oparser_->reset();
+    }
+#else
     oparser_->reset();
+#endif
     uint64_t l = 0;
     while (true) {
-        auto status = oparser_->parse(overlaps, kChunkSize);
+        bool status;
+#ifdef BAM_ENABLED
+        if (use_bam_parser_) {
+            status = bam_oparser_->parse(overlaps, kChunkSize);
+        } else {
+            status = oparser_->parse(overlaps, kChunkSize);
+        }
+#else
+        status = oparser_->parse(overlaps, kChunkSize);
+#endif
 
         uint64_t c = l;
         for (uint64_t i = l; i < overlaps.size(); ++i) {

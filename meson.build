@@ -12,6 +12,7 @@ project(
 cpp = meson.get_compiler('cpp')
 
 opt_compile_with_tests = get_option('tests')
+opt_enable_bam = get_option('bam')
 
 ############
 # CXXFLAGS #
@@ -29,6 +30,13 @@ racon_thread_dep = dependency('threads', required : true)
 
 # Zlib.
 racon_zlib_dep = dependency('zlib', required: true, version : '>= 1.2.11', fallback : ['zlib', 'zlib_dep'])
+
+# htslib for BAM support.
+racon_htslib_dep = []
+if opt_enable_bam
+    racon_htslib_dep = dependency('htslib', required : true)
+    racon_cpp_flags += ['-DBAM_ENABLED']
+endif
 
 # Google test.
 if (not meson.is_subproject()) and opt_compile_with_tests
@@ -96,10 +104,15 @@ all_sources = racon_cpp_sources + vendor_cpp_sources
 # The Racon exe.    #
 ######################
 
+racon_all_main_deps = [racon_thread_dep, racon_zlib_dep]
+if opt_enable_bam
+    racon_all_main_deps += [racon_htslib_dep]
+endif
+
 racon_dep = declare_dependency(
     include_directories: vendor_include_directories + racon_include_directories,
     link_with: [racon_lib, vendor_lib],
-    dependencies: [racon_thread_dep, racon_zlib_dep],
+    dependencies: racon_all_main_deps,
     version: meson.project_version(),
     compile_args: racon_warning_flags + racon_cpp_flags)
 
@@ -108,7 +121,7 @@ if not meson.is_subproject()
     'racon',
     ['src/main.cpp'],
     install : true,
-    dependencies : [racon_thread_dep, racon_zlib_dep],
+    dependencies : racon_all_main_deps,
     include_directories : vendor_include_directories + racon_include_directories,
     link_with : [racon_lib],
     cpp_args : [racon_warning_flags, racon_cpp_flags])
@@ -118,10 +131,14 @@ if not meson.is_subproject()
   ######################
   if opt_compile_with_tests
       if gtest_dep.found()
+          racon_test_deps = [racon_thread_dep, racon_zlib_dep, gtest_dep]
+          if opt_enable_bam
+              racon_test_deps += [racon_htslib_dep]
+          endif
           tests_bin = executable(
               'racon_test',
               racon_test_cpp_sources,
-              dependencies : [racon_thread_dep, racon_zlib_dep, gtest_dep],
+              dependencies : racon_test_deps,
               include_directories : racon_include_directories + vendor_include_directories + racon_test_include_directories,
               link_with : [racon_lib, vendor_lib],
               cpp_args : [racon_warning_flags, racon_cpp_flags, racon_test_extra_flags])
